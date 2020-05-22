@@ -81,6 +81,7 @@ SOURCES += \
     schematiceditor/fsm/schematiceditorstate_drawwire.cpp \
     schematiceditor/fsm/schematiceditorstate_select.cpp \
     schematiceditor/renamenetsegmentdialog.cpp \
+    schematiceditor/schematicclipboarddata.cpp \
     schematiceditor/schematiceditor.cpp \
     schematiceditor/schematicpagesdock.cpp \
     schematiceditor/symbolinstancepropertiesdialog.cpp \
@@ -145,6 +146,7 @@ HEADERS += \
     schematiceditor/fsm/schematiceditorstate_drawwire.h \
     schematiceditor/fsm/schematiceditorstate_select.h \
     schematiceditor/renamenetsegmentdialog.h \
+    schematiceditor/schematicclipboarddata.h \
     schematiceditor/schematiceditor.h \
     schematiceditor/schematicpagesdock.h \
     schematiceditor/symbolinstancepropertiesdialog.h \
