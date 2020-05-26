@@ -37,6 +37,13 @@
  *  Namespace / Forward Declarations
  ******************************************************************************/
 namespace librepcb {
+
+class TransactionalFileSystem;
+
+namespace library {
+class LibraryBaseElement;
+}
+
 namespace project {
 namespace editor {
 
@@ -54,7 +61,7 @@ public:
   SchematicClipboardData(const SchematicClipboardData& other) = delete;
   SchematicClipboardData(const Uuid&  schematicUuid,
                          const Point& cursorPos) noexcept;
-  explicit SchematicClipboardData(const SExpression& node);
+  explicit SchematicClipboardData(const QByteArray& mimeData);
   ~SchematicClipboardData() noexcept;
 
   // Getters
@@ -62,6 +69,7 @@ public:
   const Point& getCursorPos() const noexcept { return mCursorPos; }
 
   // General Methods
+  void addLibraryElement(const library::LibraryBaseElement& element);
   std::unique_ptr<QMimeData>                     toMimeData() const;
   static std::unique_ptr<SchematicClipboardData> fromMimeData(
       const QMimeData* mime);
@@ -76,8 +84,9 @@ private:  // Methods
   static QString getMimeType() noexcept;
 
 private:  // Data
-  Uuid  mSchematicUuid;
-  Point mCursorPos;
+  std::shared_ptr<TransactionalFileSystem> mFileSystem;
+  Uuid                                     mSchematicUuid;
+  Point                                    mCursorPos;
 };
 
 /*******************************************************************************

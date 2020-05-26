@@ -116,6 +116,14 @@ void TransactionalDirectory::removeDirRecursively(const QString& path) {
  *  General Methods
  ******************************************************************************/
 
+void TransactionalDirectory::copyTo(TransactionalDirectory& dest) const {
+  // copy files to destination
+  QString srcDir = mPath.isEmpty() ? mPath : mPath % "/";
+  QString dstDir = dest.mPath.isEmpty() ? dest.mPath : dest.mPath % "/";
+  copyDirRecursively(*mFileSystem, srcDir, *dest.mFileSystem,
+                     dstDir);  // can throw
+}
+
 void TransactionalDirectory::saveTo(TransactionalDirectory& dest) {
   // copy files to destination
   QString srcDir = mPath.isEmpty() ? mPath : mPath % "/";

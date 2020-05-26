@@ -22,11 +22,9 @@
  ******************************************************************************/
 #include "schematicclipboarddata.h"
 
-#include <librepcb/common/graphics/circlegraphicsitem.h>
-#include <librepcb/common/graphics/graphicsscene.h>
-#include <librepcb/common/graphics/polygongraphicsitem.h>
-#include <librepcb/common/graphics/textgraphicsitem.h>
-#include <librepcb/library/sym/symbolpingraphicsitem.h>
+#include <librepcb/common/fileio/transactionaldirectory.h>
+#include <librepcb/common/fileio/transactionalfilesystem.h>
+#include <librepcb/library/librarybaseelement.h>
 
 #include <QtCore>
 #include <QtWidgets>
@@ -44,12 +42,19 @@ namespace editor {
 
 SchematicClipboardData::SchematicClipboardData(const Uuid&  schematicUuid,
                                                const Point& cursorPos) noexcept
-  : mSchematicUuid(schematicUuid), mCursorPos(cursorPos) {
+  : mFileSystem(TransactionalFileSystem::openRW(FilePath::getRandomTempPath())),
+    mSchematicUuid(schematicUuid),
+    mCursorPos(cursorPos) {
 }
 
-SchematicClipboardData::SchematicClipboardData(const SExpression& node)
-  : mSchematicUuid(node.getValueByPath<Uuid>("schematic")),
-    mCursorPos(node.getChildByPath("cursor_position")) {
+SchematicClipboardData::SchematicClipboardData(const QByteArray& mimeData)
+  : SchematicClipboardData(Uuid::createRandom(), Point()) {
+  mFileSystem->loadFromZip(mimeData);  // can throw
+
+  SExpression root =
+      SExpression::parse(mFileSystem->read("schematic.lp"), FilePath());
+  mSchematicUuid = root.getValueByPath<Uuid>("schematic");
+  mCursorPos     = Point(root.getChildByPath("cursor_position"));
 }
 
 SchematicClipboardData::~SchematicClipboardData() noexcept {
@@ -59,12 +64,19 @@ SchematicClipboardData::~SchematicClipboardData() noexcept {
  *  General Methods
  ******************************************************************************/
 
+void SchematicClipboardData::addLibraryElement(
+    const library::LibraryBaseElement& element) {
+  TransactionalDirectory dst(mFileSystem, element.getShortElementName());
+  element.getDirectory().copyTo(dst);  // can throw
+}
+
 std::unique_ptr<QMimeData> SchematicClipboardData::toMimeData() const {
   SExpression sexpr =
-      serializeToDomElement("librepcb_clipboard_symbol");  // can throw
+      serializeToDomElement("librepcb_clipboard_schematic");  // can throw
+  mFileSystem->write("schematic.lp", sexpr.toByteArray());
 
   std::unique_ptr<QMimeData> data(new QMimeData());
-  data->setData(getMimeType(), sexpr.toByteArray());
+  data->setData(getMimeType(), mFileSystem->exportToZip());
   return data;
 }
 
@@ -72,9 +84,8 @@ std::unique_ptr<SchematicClipboardData> SchematicClipboardData::fromMimeData(
     const QMimeData* mime) {
   QByteArray content = mime ? mime->data(getMimeType()) : QByteArray();
   if (!content.isNull()) {
-    SExpression root = SExpression::parse(content, FilePath());
     return std::unique_ptr<SchematicClipboardData>(
-        new SchematicClipboardData(root));  // can throw
+        new SchematicClipboardData(content));  // can throw
   } else {
     return nullptr;
   }
@@ -90,7 +101,7 @@ void SchematicClipboardData::serialize(SExpression& root) const {
 }
 
 QString SchematicClipboardData::getMimeType() noexcept {
-  return QString("application/x-librepcb-clipboard.symbol; version=%1")
+  return QString("application/x-librepcb-clipboard.schematic; version=%1")
       .arg(qApp->applicationVersion());
 }
 
