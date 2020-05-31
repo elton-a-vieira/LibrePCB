@@ -56,6 +56,7 @@ SOURCES += \
     cmd/cmdflipselectedboarditems.cpp \
     cmd/cmdmirrorselectedschematicitems.cpp \
     cmd/cmdmoveselectedschematicitems.cpp \
+    cmd/cmdpasteschematicitems.cpp \
     cmd/cmdremoveboarditems.cpp \
     cmd/cmdremoveselectedboarditems.cpp \
     cmd/cmdremoveselectedschematicitems.cpp \
@@ -82,6 +83,7 @@ SOURCES += \
     schematiceditor/fsm/schematiceditorstate_select.cpp \
     schematiceditor/renamenetsegmentdialog.cpp \
     schematiceditor/schematicclipboarddata.cpp \
+    schematiceditor/schematicclipboarddatabuilder.cpp \
     schematiceditor/schematiceditor.cpp \
     schematiceditor/schematicpagesdock.cpp \
     schematiceditor/symbolinstancepropertiesdialog.cpp \
@@ -121,6 +123,7 @@ HEADERS += \
     cmd/cmdflipselectedboarditems.h \
     cmd/cmdmirrorselectedschematicitems.h \
     cmd/cmdmoveselectedschematicitems.h \
+    cmd/cmdpasteschematicitems.h \
     cmd/cmdremoveboarditems.h \
     cmd/cmdremoveselectedboarditems.h \
     cmd/cmdremoveselectedschematicitems.h \
@@ -147,6 +150,7 @@ HEADERS += \
     schematiceditor/fsm/schematiceditorstate_select.h \
     schematiceditor/renamenetsegmentdialog.h \
     schematiceditor/schematicclipboarddata.h \
+    schematiceditor/schematicclipboarddatabuilder.h \
     schematiceditor/schematiceditor.h \
     schematiceditor/schematicpagesdock.h \
     schematiceditor/symbolinstancepropertiesdialog.h \

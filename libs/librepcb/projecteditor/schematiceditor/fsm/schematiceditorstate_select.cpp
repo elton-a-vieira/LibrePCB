@@ -24,11 +24,14 @@
 
 #include "../../cmd/cmdmirrorselectedschematicitems.h"
 #include "../../cmd/cmdmoveselectedschematicitems.h"
+#include "../../cmd/cmdpasteschematicitems.h"
 #include "../../cmd/cmdremoveselectedschematicitems.h"
 #include "../../cmd/cmdrotateselectedschematicitems.h"
 #include "../renamenetsegmentdialog.h"
+#include "../schematicclipboarddatabuilder.h"
 #include "../symbolinstancepropertiesdialog.h"
 
+#include <librepcb/common/graphics/graphicsview.h>
 #include <librepcb/project/schematics/items/si_netlabel.h>
 #include <librepcb/project/schematics/items/si_symbol.h>
 
@@ -73,6 +76,24 @@ bool SchematicEditorState_Select::exit() noexcept {
 /*******************************************************************************
  *  Event Handlers
  ******************************************************************************/
+
+bool SchematicEditorState_Select::processCut() noexcept {
+  return false;
+}
+
+bool SchematicEditorState_Select::processCopy() noexcept {
+  if (mSubState == SubState::IDLE) {
+    return copySelectedItemsToClipboard();
+  }
+  return false;
+}
+
+bool SchematicEditorState_Select::processPaste() noexcept {
+  if (mSubState == SubState::IDLE) {
+    return pasteFromClipboard();
+  }
+  return false;
+}
 
 bool SchematicEditorState_Select::processRotateCw() noexcept {
   if (mSubState == SubState::IDLE) {
@@ -374,6 +395,67 @@ bool SchematicEditorState_Select::removeSelectedItems() noexcept {
     QMessageBox::critical(parentWidget(), tr("Error"), e.getMsg());
     return false;
   }
+}
+
+bool SchematicEditorState_Select::copySelectedItemsToClipboard() noexcept {
+  Schematic* schematic = getActiveSchematic();
+  if (!schematic) return false;
+
+  try {
+    Point cursorPos = mContext.editorGraphicsView.mapGlobalPosToScenePos(
+        QCursor::pos(), true, false);
+    SchematicClipboardDataBuilder           builder(*schematic);
+    std::unique_ptr<SchematicClipboardData> data = builder.generate(cursorPos);
+    qApp->clipboard()->setMimeData(data->toMimeData().release());
+  } catch (Exception& e) {
+    QMessageBox::critical(parentWidget(), tr("Error"), e.getMsg());
+  }
+  return true;
+}
+
+bool SchematicEditorState_Select::pasteFromClipboard() noexcept {
+  Schematic* schematic = getActiveSchematic();
+  if (!schematic) return false;
+
+  try {
+    // update cursor position
+    // mStartPos = mContext.graphicsView.mapGlobalPosToScenePos(QCursor::pos(),
+    //                                                         true, false);
+
+    // get symbol items and abort if there are no items
+    std::unique_ptr<SchematicClipboardData> data =
+        SchematicClipboardData::fromMimeData(
+            qApp->clipboard()->mimeData());  // can throw
+    if (!data) {
+      return false;
+    }
+
+    // start undo command group
+    // clearSelectionRect(true);
+    // mContext.undoStack.beginCmdGroup(tr("Paste Symbol Elements"));
+    // mState = SubState::PASTING;
+
+    // paste items from clipboard
+    Point offset;
+    // offset = (mStartPos -
+    // data->getCursorPos()).mappedToGrid(getGridInterval());
+    QScopedPointer<CmdPasteSchematicItems> cmd(
+        new CmdPasteSchematicItems(*schematic, std::move(data), offset));
+    execCmd(cmd.take());
+
+    // if (mContext.undoStack.appendToCmdGroup(cmd.take())) {  // can throw
+    //  // start moving the selected items
+    //  mCmdDragSelectedItems.reset(new CmdDragSelectedSymbolItems(mContext));
+    //  return true;
+    //} else {
+    //  // no items pasted -> abort
+    //  mContext.undoStack.abortCmdGroup();  // can throw
+    //  mState = SubState::IDLE;
+    //}
+  } catch (const Exception& e) {
+    QMessageBox::critical(parentWidget(), tr("Error"), e.getMsg());
+  }
+  return false;
 }
 
 void SchematicEditorState_Select::openSymbolPropertiesDialog(

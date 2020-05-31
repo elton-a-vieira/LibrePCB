@@ -24,7 +24,10 @@
 
 #include <librepcb/common/fileio/transactionaldirectory.h>
 #include <librepcb/common/fileio/transactionalfilesystem.h>
+#include <librepcb/library/cmp/component.h>
 #include <librepcb/library/librarybaseelement.h>
+#include <librepcb/library/sym/symbol.h>
+#include <librepcb/project/circuit/netsignal.h>
 
 #include <QtCore>
 #include <QtWidgets>
@@ -44,7 +47,10 @@ SchematicClipboardData::SchematicClipboardData(const Uuid&  schematicUuid,
                                                const Point& cursorPos) noexcept
   : mFileSystem(TransactionalFileSystem::openRW(FilePath::getRandomTempPath())),
     mSchematicUuid(schematicUuid),
-    mCursorPos(cursorPos) {
+    mCursorPos(cursorPos),
+    mNetSignals(),
+    mComponentInstances(),
+    mSymbolInstances() {
 }
 
 SchematicClipboardData::SchematicClipboardData(const QByteArray& mimeData)
@@ -55,28 +61,41 @@ SchematicClipboardData::SchematicClipboardData(const QByteArray& mimeData)
       SExpression::parse(mFileSystem->read("schematic.lp"), FilePath());
   mSchematicUuid = root.getValueByPath<Uuid>("schematic");
   mCursorPos     = Point(root.getChildByPath("cursor_position"));
+  mNetSignals.loadFromSExpression(root);
+  mComponentInstances.loadFromSExpression(root);
+  mSymbolInstances.loadFromSExpression(root);
 }
 
 SchematicClipboardData::~SchematicClipboardData() noexcept {
 }
 
 /*******************************************************************************
- *  General Methods
+ *  Getters
  ******************************************************************************/
 
-void SchematicClipboardData::addLibraryElement(
-    const library::LibraryBaseElement& element) {
-  TransactionalDirectory dst(mFileSystem, element.getShortElementName());
-  element.getDirectory().copyTo(dst);  // can throw
+std::unique_ptr<TransactionalDirectory> SchematicClipboardData::getDirectory(
+    const QString& path) noexcept {
+  return std::unique_ptr<TransactionalDirectory>(
+      new TransactionalDirectory(mFileSystem, path));
 }
+
+/*******************************************************************************
+ *  General Methods
+ ******************************************************************************/
 
 std::unique_ptr<QMimeData> SchematicClipboardData::toMimeData() const {
   SExpression sexpr =
       serializeToDomElement("librepcb_clipboard_schematic");  // can throw
   mFileSystem->write("schematic.lp", sexpr.toByteArray());
+  mFileSystem->save();
+
+  QByteArray zip = mFileSystem->exportToZip();
 
   std::unique_ptr<QMimeData> data(new QMimeData());
-  data->setData(getMimeType(), mFileSystem->exportToZip());
+  data->setData(getMimeType(), zip);
+  data->setData("application/zip", zip);
+  data->setUrls({mFileSystem->getPath().toQUrl()});
+  data->setText(sexpr.toByteArray());
   return data;
 }
 
@@ -98,6 +117,9 @@ std::unique_ptr<SchematicClipboardData> SchematicClipboardData::fromMimeData(
 void SchematicClipboardData::serialize(SExpression& root) const {
   root.appendChild(mCursorPos.serializeToDomElement("cursor_position"), true);
   root.appendChild("schematic", mSchematicUuid, true);
+  mNetSignals.serialize(root);
+  mComponentInstances.serialize(root);
+  mSymbolInstances.serialize(root);
 }
 
 QString SchematicClipboardData::getMimeType() noexcept {

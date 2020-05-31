@@ -68,6 +68,9 @@ public:
   virtual bool exit() noexcept override;
 
   // Event Handlers
+  virtual bool processCut() noexcept override;
+  virtual bool processCopy() noexcept override;
+  virtual bool processPaste() noexcept override;
   virtual bool processRotateCw() noexcept override;
   virtual bool processRotateCcw() noexcept override;
   virtual bool processMirror() noexcept override;
@@ -94,6 +97,8 @@ private:  // Methods
   bool rotateSelectedItems(const Angle& angle) noexcept;
   bool mirrorSelectedItems() noexcept;
   bool removeSelectedItems() noexcept;
+  bool copySelectedItemsToClipboard() noexcept;
+  bool pasteFromClipboard() noexcept;
   void openSymbolPropertiesDialog(SI_Symbol& symbol) noexcept;
   void openNetLabelPropertiesDialog(SI_NetLabel& netlabel) noexcept;
 
