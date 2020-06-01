@@ -105,11 +105,14 @@ private:  // Methods
 private:  // Data
   /// enum for all possible substates
   enum class SubState {
-    IDLE,   ///< left mouse button is not pressed (default state)
-    MOVING  ///< left mouse button is pressed
+    IDLE,       ///< left mouse button is not pressed (default state)
+    SELECTING,  ///< left mouse button pressed to draw selection rect
+    MOVING,     ///< left mouse button pressed to move items
+    PASTING,    ///< move pasted items
   };
 
   SubState mSubState;  ///< the current substate
+  Point    mStartPos;
   QScopedPointer<CmdMoveSelectedSchematicItems> mSelectedItemsMoveCommand;
 };
 

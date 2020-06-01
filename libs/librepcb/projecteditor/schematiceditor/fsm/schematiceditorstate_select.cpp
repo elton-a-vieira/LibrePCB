@@ -32,6 +32,7 @@
 #include "../symbolinstancepropertiesdialog.h"
 
 #include <librepcb/common/graphics/graphicsview.h>
+#include <librepcb/common/undostack.h>
 #include <librepcb/project/schematics/items/si_netlabel.h>
 #include <librepcb/project/schematics/items/si_symbol.h>
 
@@ -68,6 +69,14 @@ bool SchematicEditorState_Select::entry() noexcept {
 }
 
 bool SchematicEditorState_Select::exit() noexcept {
+  if (mSubState == SubState::PASTING) {
+    try {
+      mContext.undoStack.abortCmdGroup();
+    } catch (...) {
+      return false;
+    }
+  }
+
   mSelectedItemsMoveCommand.reset();
   mSubState = SubState::IDLE;
   return true;
@@ -132,17 +141,24 @@ bool SchematicEditorState_Select::processGraphicsSceneMouseMoved(
   Schematic* schematic = getActiveSchematic();
   if (!schematic) return false;
 
-  if ((mSubState == SubState::IDLE) && e.buttons().testFlag(Qt::LeftButton)) {
-    // draw selection rectangle
-    Point p1 = Point::fromPx(e.buttonDownScenePos(Qt::LeftButton));
-    Point p2 = Point::fromPx(e.scenePos());
-    schematic->setSelectionRect(p1, p2, true);
-    return true;
-  } else if (mSubState == SubState::MOVING) {
-    Q_ASSERT(!mSelectedItemsMoveCommand.isNull());
-    Point pos = Point::fromPx(e.scenePos());
-    mSelectedItemsMoveCommand->setCurrentPosition(pos);
-    return true;
+  switch (mSubState) {
+    case SubState::SELECTING: {
+      // update selection rectangle
+      Point pos = Point::fromPx(e.scenePos());
+      schematic->setSelectionRect(mStartPos, pos, true);
+      return true;
+    }
+
+    case SubState::MOVING:
+    case SubState::PASTING: {
+      Q_ASSERT(!mSelectedItemsMoveCommand.isNull());
+      Point pos = Point::fromPx(e.scenePos());
+      mSelectedItemsMoveCommand->setCurrentPosition(pos);
+      return true;
+    }
+
+    default:
+      break;
   }
 
   return false;
@@ -155,11 +171,13 @@ bool SchematicEditorState_Select::processGraphicsSceneLeftMouseButtonPressed(
 
   if (mSubState == SubState::IDLE) {
     // handle items selection
-    QList<SI_Base*> items =
-        schematic->getItemsAtScenePos(Point::fromPx(e.scenePos()));
+    Point           pos   = Point::fromPx(e.scenePos());
+    QList<SI_Base*> items = schematic->getItemsAtScenePos(pos);
     if (items.isEmpty()) {
       // no items under mouse --> start drawing a selection rectangle
       schematic->clearSelection();
+      mStartPos = pos;
+      mSubState = SubState::SELECTING;
       return true;
     }
 
@@ -178,6 +196,20 @@ bool SchematicEditorState_Select::processGraphicsSceneLeftMouseButtonPressed(
     if (startMovingSelectedItems(*schematic, Point::fromPx(e.scenePos()))) {
       return true;
     }
+  } else if (mSubState == SubState::PASTING) {
+    // stop moving items (set position of all selected elements permanent)
+    Q_ASSERT(!mSelectedItemsMoveCommand.isNull());
+    Point pos = Point::fromPx(e.scenePos());
+    mSelectedItemsMoveCommand->setCurrentPosition(pos);
+    try {
+      mContext.undoStack.appendToCmdGroup(
+          mSelectedItemsMoveCommand.take());  // can throw
+      mContext.undoStack.commitCmdGroup();
+    } catch (Exception& e) {
+      QMessageBox::critical(parentWidget(), tr("Error"), e.getMsg());
+    }
+    mSelectedItemsMoveCommand.reset();
+    mSubState = SubState::IDLE;
   }
 
   return false;
@@ -188,9 +220,10 @@ bool SchematicEditorState_Select::processGraphicsSceneLeftMouseButtonReleased(
   Schematic* schematic = getActiveSchematic();
   if (!schematic) return false;
 
-  if (mSubState == SubState::IDLE) {
+  if (mSubState == SubState::SELECTING) {
     // remove selection rectangle and keep the selection state of all items
     schematic->setSelectionRect(Point(), Point(), false);
+    mSubState = SubState::IDLE;
     return true;
   } else if (mSubState == SubState::MOVING) {
     // stop moving items (set position of all selected elements permanent)
@@ -418,10 +451,6 @@ bool SchematicEditorState_Select::pasteFromClipboard() noexcept {
   if (!schematic) return false;
 
   try {
-    // update cursor position
-    // mStartPos = mContext.graphicsView.mapGlobalPosToScenePos(QCursor::pos(),
-    //                                                         true, false);
-
     // get symbol items and abort if there are no items
     std::unique_ptr<SchematicClipboardData> data =
         SchematicClipboardData::fromMimeData(
@@ -430,30 +459,41 @@ bool SchematicEditorState_Select::pasteFromClipboard() noexcept {
       return false;
     }
 
+    // update cursor position
+    mStartPos = mContext.editorGraphicsView.mapGlobalPosToScenePos(
+        QCursor::pos(), true, false);
+
     // start undo command group
-    // clearSelectionRect(true);
-    // mContext.undoStack.beginCmdGroup(tr("Paste Symbol Elements"));
-    // mState = SubState::PASTING;
+    schematic->clearSelection();
+    mContext.undoStack.beginCmdGroup(tr("Paste Schematic Elements"));
+    mSubState = SubState::PASTING;
 
     // paste items from clipboard
-    Point offset;
-    // offset = (mStartPos -
-    // data->getCursorPos()).mappedToGrid(getGridInterval());
+    Point offset =
+        (mStartPos - data->getCursorPos()).mappedToGrid(getGridInterval());
     QScopedPointer<CmdPasteSchematicItems> cmd(
         new CmdPasteSchematicItems(*schematic, std::move(data), offset));
-    execCmd(cmd.take());
 
-    // if (mContext.undoStack.appendToCmdGroup(cmd.take())) {  // can throw
-    //  // start moving the selected items
-    //  mCmdDragSelectedItems.reset(new CmdDragSelectedSymbolItems(mContext));
-    //  return true;
-    //} else {
-    //  // no items pasted -> abort
-    //  mContext.undoStack.abortCmdGroup();  // can throw
-    //  mState = SubState::IDLE;
-    //}
+    if (mContext.undoStack.appendToCmdGroup(cmd.take())) {  // can throw
+      // start moving the selected items
+      mSelectedItemsMoveCommand.reset(
+          new CmdMoveSelectedSchematicItems(*schematic, mStartPos));
+      return true;
+    } else {
+      // no items pasted -> abort
+      mContext.undoStack.abortCmdGroup();  // can throw
+      mSubState = SubState::IDLE;
+    }
   } catch (const Exception& e) {
     QMessageBox::critical(parentWidget(), tr("Error"), e.getMsg());
+    mSelectedItemsMoveCommand.reset();
+    if (mSubState == SubState::PASTING) {
+      try {
+        mContext.undoStack.abortCmdGroup();
+      } catch (...) {
+      }
+      mSubState = SubState::IDLE;
+    }
   }
   return false;
 }
